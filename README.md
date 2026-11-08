@@ -98,13 +98,27 @@ hardening/backups.
 ## Puesta en marcha
 
 ```bash
-cp .env.example .env          # ajusta DATABASE_URL y AUTH_SECRET
+# 0) PostgreSQL en marcha y base de datos creada (una sola vez):
+createdb gestion_bar          # o: psql -U postgres -c "CREATE DATABASE gestion_bar;"
+
+cp .env.example .env          # ajusta DATABASE_URL (host/puerto/usuario/clave) y AUTH_SECRET
 npm install
-npx prisma migrate deploy     # aplica prisma/migrations (o migrate dev en desarrollo)
+npx prisma migrate deploy     # aplica las 3 migraciones (usa deploy; migrate dev exige shadow DB)
 npm run db:seed               # bar de ejemplo + admin@bar.local / admin1234 (PIN 1234)
 npm run dev                   # o npm run build && npm start (el SW solo actúa en producción/HTTPS)
 DATABASE_URL=... ./scripts/backup.sh   # backup en backups/ (retención 7)
 ```
+
+## Errores habituales al arrancar
+
+| Error | Causa | Solución |
+|---|---|---|
+| `P1001: Can't reach database server at localhost:5432` | PostgreSQL no está corriendo o la URL es otra | Arranca PostgreSQL (`sudo service postgresql start`, Docker, etc.) y revisa `DATABASE_URL` |
+| `P1000: Authentication failed` | Usuario/clave incorrectos en `DATABASE_URL` | Ajusta usuario/clave de tu PostgreSQL local |
+| `P1003: Database "gestion_bar" does not exist` | Falta crear la base de datos | `createdb gestion_bar` antes de migrar |
+| `P2021: The table ... does not exist` en el seed | No se aplicaron las migraciones | `npx prisma migrate deploy` y luego `npm run db:seed` |
+| `MissingSecret` / error de NextAuth al entrar | Falta `AUTH_SECRET` en `.env` | Copia `.env.example` y pon un valor aleatorio largo |
+| `Port 3000 is already in use` | Otro proceso usa el 3000 | `npm run dev -- -p 3001` |
 
 ## API
 
