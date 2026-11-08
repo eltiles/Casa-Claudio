@@ -1,0 +1,149 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f5f4f0;
+  color: #1d1b16;
+}
+
+header.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #1d1b16;
+  color: #f5f4f0;
+}
+
+header.topbar a {
+  color: #f5f4f0;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+header.topbar strong {
+  font-size: 16px;
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 24px 0 8px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e3e0d8;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #eceade;
+}
+
+th {
+  font-weight: 600;
+  color: #6b675c;
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge.ok {
+  background: #dff3e1;
+  color: #1c6b2d;
+}
+
+.badge.bad {
+  background: #fbe0e0;
+  color: #a12323;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #6b675c;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cfcabb;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+button {
+  background: #1d1b16;
+  color: #f5f4f0;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #35322a;
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.alert.error {
+  background: #fbe0e0;
+  color: #a12323;
+}
+
+.alert.ok {
+  background: #dff3e1;
+  color: #1c6b2d;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}

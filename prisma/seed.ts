@@ -1,0 +1,132 @@
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const establishment = await prisma.establishment.upsert({
+    where: { nif: "B12345678" },
+    update: {},
+    create: {
+      name: "Bar Ejemplo",
+      nif: "B12345678",
+      address: "Calle Mayor 1",
+      postalCode: "28001",
+      municipality: "Madrid",
+      province: "Madrid",
+    },
+  });
+
+  const passwordHash = await bcrypt.hash("admin1234", 10);
+  const admin = await prisma.user.upsert({
+    where: { email: "admin@bar.local" },
+    update: {},
+    create: {
+      establishmentId: establishment.id,
+      email: "admin@bar.local",
+      name: "Administrador",
+      passwordHash,
+      role: "ADMIN",
+    },
+  });
+
+  const validFrom = new Date("2024-01-01T00:00:00Z");
+  const taxRatesData = [
+    { code: "IVA_GENERAL_21", label: "IVA general 21% (bebidas alcohólicas, espectáculos, otros)", rate: 0.21 },
+    { code: "IVA_REDUCIDO_10", label: "IVA reducido 10% (alimentos y bebidas sin alcohol en hostelería)", rate: 0.1 },
+    { code: "IVA_SUPERREDUCIDO_4", label: "IVA superreducido 4% (bienes de primera necesidad)", rate: 0.04 },
+    { code: "IVA_EXENTO_0", label: "IVA exento 0%", rate: 0.0 },
+  ];
+  const taxRates: Record<string, string> = {};
+  for (const t of taxRatesData) {
+    const rate = await prisma.taxRate.upsert({
+      where: { code_validFrom: { code: t.code, validFrom } },
+      update: { label: t.label, rate: t.rate, active: true },
+      create: { code: t.code, label: t.label, rate: t.rate, validFrom, active: true },
+    });
+    taxRates[t.code] = rate.id;
+  }
+
+  const accounts = [
+    { code: "400", name: "Proveedores", type: "LIABILITY" as const },
+    { code: "570", name: "Caja", type: "ASSET" as const },
+    { code: "572", name: "Bancos c/c", type: "ASSET" as const },
+    { code: "600", name: "Compras de mercaderías", type: "EXPENSE" as const },
+    { code: "678", name: "Gastos excepcionales", type: "EXPENSE" as const },
+    { code: "700", name: "Ventas de mercaderías", type: "INCOME" as const },
+    { code: "705", name: "Prestación de servicios", type: "INCOME" as const },
+    { code: "778", name: "Ingresos excepcionales", type: "INCOME" as const },
+    { code: "472", name: "IVA soportado", type: "ASSET" as const },
+    { code: "477", name: "IVA repercutido", type: "LIABILITY" as const },
+  ];
+  for (const a of accounts) {
+    await prisma.ledgerAccount.upsert({
+      where: { establishmentId_code: { establishmentId: establishment.id, code: a.code } },
+      update: {},
+      create: { establishmentId: establishment.id, ...a, isSystem: true },
+    });
+  }
+
+  const year = new Date().getFullYear();
+  await prisma.invoiceSeries.upsert({
+    where: { establishmentId_code_year: { establishmentId: establishment.id, code: "A", year } },
+    update: {},
+    create: { establishmentId: establishment.id, code: "A", description: "Serie principal", year, nextNumber: 1 },
+  });
+
+  const categories: Record<string, string> = {};
+  for (const [key, name] of [
+    ["BEBIDAS", "Bebidas"],
+    ["COMIDA", "Comida"],
+    ["CAFE", "Cafés"],
+  ] as const) {
+    const c = await prisma.category.upsert({
+      where: { id: `${establishment.id}-${key}` },
+      update: { name },
+      create: { id: `${establishment.id}-${key}`, establishmentId: establishment.id, name },
+    });
+    categories[key] = c.id;
+  }
+
+  const products = [
+    { sku: "CERVEZA", name: "Caña de cerveza", category: "BEBIDAS", taxRate: "IVA_GENERAL_21", price: 2.5, costStd: 0.9 },
+    { sku: "REFRESCO", name: "Refresco", category: "BEBIDAS", taxRate: "IVA_REDUCIDO_10", price: 2.2, costStd: 0.5 },
+    { sku: "BRAVAS", name: "Ración de bravas", category: "COMIDA", taxRate: "IVA_REDUCIDO_10", price: 8.0, costStd: 2.4 },
+    { sku: "CAFE", name: "Café solo", category: "CAFE", taxRate: "IVA_REDUCIDO_10", price: 1.8, costStd: 0.25 },
+  ];
+  for (const p of products) {
+    await prisma.product.upsert({
+      where: { establishmentId_sku: { establishmentId: establishment.id, sku: p.sku } },
+      update: { name: p.name, price: p.price, costStd: p.costStd, taxRateId: taxRates[p.taxRate] },
+      create: {
+        establishmentId: establishment.id,
+        categoryId: categories[p.category],
+        sku: p.sku,
+        name: p.name,
+        taxRateId: taxRates[p.taxRate],
+        price: p.price,
+        costStd: p.costStd,
+        saleAccountCode: "700",
+      },
+    });
+  }
+
+  for (let i = 1; i <= 8; i++) {
+    await prisma.diningTable.upsert({
+      where: { id: `${establishment.id}-M${i}` },
+      update: {},
+      create: { id: `${establishment.id}-M${i}`, establishmentId: establishment.id, name: `Mesa ${i}`, capacity: 4 },
+    });
+  }
+
+  console.log(`Seed OK — establecimiento=${establishment.name}, admin=${admin.email} (admin1234)`);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
