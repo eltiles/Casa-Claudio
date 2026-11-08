@@ -97,17 +97,38 @@ hardening/backups.
 
 ## Puesta en marcha
 
-```bash
-# 0) PostgreSQL en marcha y base de datos creada (una sola vez):
-createdb gestion_bar          # o: psql -U postgres -c "CREATE DATABASE gestion_bar;"
+Usa el código de la **rama del PR** (`vibe/fase-0-nucleo-fiscal-1113ce`); el ZIP de `main` solo trae el bootstrap:
 
-cp .env.example .env          # ajusta DATABASE_URL (host/puerto/usuario/clave) y AUTH_SECRET
+```bash
+git clone -b vibe/fase-0-nucleo-fiscal-1113ce https://github.com/eltiles/Casa-Claudio.git
+cd Casa-Claudio        # entra SIEMPRE en la carpeta del proyecto antes de lanzar comandos
+```
+
+PostgreSQL en Debian/Ubuntu (instala servidor+cliente, arranca y crea la BD):
+
+```bash
+sudo apt install postgresql postgresql-client
+sudo systemctl enable --now postgresql
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+sudo -u postgres createdb gestion_bar
+```
+
+(o con Docker: `docker run -d --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16`)
+
+App:
+
+```bash
+cp .env.example .env          # DATABASE_URL ya apunta a postgres:postgres@localhost:5432/gestion_bar
 npm install
 npx prisma migrate deploy     # aplica las 3 migraciones (usa deploy; migrate dev exige shadow DB)
-npm run db:seed               # bar de ejemplo + admin@bar.local / admin1234 (PIN 1234)
-npm run dev                   # o npm run build && npm start (el SW solo actúa en producción/HTTPS)
+npm run db:seed               # admin@bar.local / admin1234 (PIN 1234), camarero@bar.local (PIN 4321)
+npm run dev                   # http://localhost:3000
 DATABASE_URL=... ./scripts/backup.sh   # backup en backups/ (retención 7)
 ```
+
+Notas: `npm audit` puede avisar de vulnerabilidades en herramientas de desarrollo (prisma CLI / postcss);
+revísalas con `npm audit fix --force` solo tras probar, en despliegue. La PWA offline solo se activa con
+`npm run build && npm start` (o HTTPS), no en `next dev`.
 
 ## Errores habituales al arrancar
 
