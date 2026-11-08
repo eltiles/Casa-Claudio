@@ -5,6 +5,7 @@ import type { Invoice, InvoiceLine, Prisma, Sale, SaleLine } from "@prisma/clien
 import { createSaleLedgerEntry, nextSaleNumber } from "@/modules/accounting/ledger";
 import { issueDocumentTx } from "@/modules/fiscal/service";
 import { CASH_LIMIT_EUR, validatePayments, type PaymentInput } from "@/modules/sales/service";
+import { drainOutbox } from "@/modules/inventory/service";
 
 export type SaleWithLines = Sale & { lines: SaleLine[] };
 
@@ -312,6 +313,9 @@ export async function paySale(input: {
       include: { lines: true, payments: true },
     });
     return { sale: fresh, invoice, alreadyPaid: false };
+  }).then(async (r) => {
+    await drainOutbox().catch(() => {});
+    return r;
   });
 }
 

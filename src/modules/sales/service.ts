@@ -7,6 +7,7 @@ import {
   nextSaleNumber,
   type LedgerPayment,
 } from "@/modules/accounting/ledger";
+import { drainOutbox } from "@/modules/inventory/service";
 
 export const CASH_LIMIT_EUR = 1000;
 
@@ -192,6 +193,9 @@ export async function createSale(
       where: { id: created.id },
       include: { lines: true, payments: true },
     });
+  }).then(async (s) => {
+    await drainOutbox().catch(() => {});
+    return s;
   });
 
   return { sale, idempotent: false };

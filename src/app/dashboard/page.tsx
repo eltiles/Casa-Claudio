@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { verifyChain } from "@/modules/fiscal/service";
+import { listLowStock } from "@/modules/inventory/service";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
 
-  const [invoices, chain, salesToday, openClosing] = await Promise.all([
+  const [invoices, chain, salesToday, openClosing, lowStock] = await Promise.all([
     prisma.invoice.findMany({
       where: { establishmentId },
       orderBy: [{ createdAt: "desc" }],
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
     prisma.cashClosing.findFirst({
       where: { establishmentId, date: dayStart, status: "OPEN" },
     }),
+    listLowStock(establishmentId),
   ]);
 
   return (
@@ -42,6 +44,9 @@ export default async function DashboardPage() {
         <Link href="/mesas">Mesas</Link>
         <Link href="/kds">Cocina</Link>
         <Link href="/ventas/nueva">Venta rápida</Link>
+        <Link href="/inventario">Inventario</Link>
+        <Link href="/carta">Carta</Link>
+        <Link href="/compras">Compras</Link>
         <span style={{ marginLeft: "auto", fontSize: 13 }}>{userName}</span>
       </header>
       <main>
@@ -69,6 +74,18 @@ export default async function DashboardPage() {
               {openClosing ? "abierta" : "sin cierre abierto"}
             </p>
           </div>
+        </div>
+
+        <div className="card">
+          <h2>Alertas de stock</h2>
+          {lowStock.length === 0 ? (
+            <span className="badge ok">Sin alertas</span>
+          ) : (
+            <span className="badge bad">
+              {lowStock.length} artículo(s) bajo mínimo:{" "}
+              {lowStock.map((i) => `${i.name} (${i.quantity} ${i.unit})`).join(", ")}
+            </span>
+          )}
         </div>
 
         <div className="card">

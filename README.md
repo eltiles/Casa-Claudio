@@ -4,7 +4,7 @@ Aplicación de gestión para un bar en España que combina operativa de sala (TP
 contabilidad, con cumplimiento fiscal español. Stack: **Next.js 15 (App Router) +
 TypeScript + PostgreSQL (Prisma) + NextAuth**. Sin tests automatizados (alcance acordado).
 
-## Estado: Fases 0-1 — cimientos fiscales + TPV/mesas/KDS
+## Estado: Fases 0-2 — cimientos fiscales + TPV/mesas/KDS + inventario/escandallos
 
 Fase 0 (núcleo fiscal):
 
@@ -45,9 +45,23 @@ Fase 1 (TPV y sala):
   fiscal encadenado (vinculado a la venta vía `Invoice.saleId`), evento `sale.confirmed`,
   auditoría y liberación de la mesa.
 
-Pendiente por fases: Fase 2 inventario + escandallos, Fase 3 contabilidad completa + OCR +
-conciliación bancaria, Fase 4 personal/turnos/comisiones, Fase 5 envío Verifactu/SII/TicketBAI
-a la AEAT + agente de impresión ESC/POS local.
+Fase 2 (inventario y escandallos):
+
+- **Compras a proveedores** (`/compras/nueva`, `POST /api/purchases`): al registrar una factura se crean
+  los movimientos de entrada en el kardex (append-only), se actualiza el último coste de cada artículo,
+  se recalcula el coste estándar de los productos afectados y se anota el asiento (600 + 472 → 400).
+- **Descuento automático de stock**: el consumidor del outbox (`drainOutbox`) procesa `sale.confirmed`,
+  expande las recetas de cada línea de venta y genera movimientos OUT con referencia `SALE:<id>:...`
+  (idempotente por referencia). Se ejecuta tras cada cobro y vía cron en `POST /api/internal/drain`
+  (header `x-internal-secret`).
+- **Alertas de stock mínimo**: al cruzar el mínimo se emite `stock.low` y se muestra en `/inventario`
+  y en el panel.
+- **Escandallos** (`/carta`, `/carta/[id]`): receta por producto (ingrediente + cantidad), coste estándar
+  = Σ cantidad × último coste, margen € y % por producto.
+
+Pendiente por fases: Fase 3 contabilidad completa + OCR de facturas + conciliación bancaria,
+Fase 4 personal/turnos/comisiones, Fase 5 envío Verifactu/SII/TicketBAI a la AEAT + agente de
+impresión ESC/POS local.
 
 ## Puesta en marcha
 
@@ -70,6 +84,11 @@ npm run dev                   # o npm run build && npm start (el SW solo actúa 
 | POST | `/api/cash/close` | Cierre/arqueo de caja del día |
 | GET | `/api/kds/stream` | SSE con comandas del día (KDS) |
 | GET | `/api/kds/orders` | Comandas del día en JSON |
+| POST | `/api/purchases` | Registra compra (stock + asiento) |
+| GET | `/api/inventory/stock?low=1` | Stock (solo bajo mínimo con `low=1`) |
+| GET | `/api/inventory/movements` | Kardex |
+| POST | `/api/inventory/recipe` | Guarda escandallo de un producto |
+| POST | `/api/internal/drain` | Procesa el outbox (cron, `x-internal-secret`) |
 
 Ejemplo de venta:
 

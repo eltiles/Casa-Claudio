@@ -146,6 +146,66 @@ async function main() {
     });
   }
 
+  await prisma.supplier.upsert({
+    where: { id: `${establishment.id}-PROV-BEBIDAS` },
+    update: {},
+    create: {
+      id: `${establishment.id}-PROV-BEBIDAS`,
+      establishmentId: establishment.id,
+      name: "Distribuidora Bebidas SA",
+      nif: "B87654321",
+    },
+  });
+
+  const stockData = [
+    { sku: "CERVEZA-L", name: "Cerveza (barril)", unit: "l", quantity: 40, minStock: 10, unitCost: 1.1 },
+    { sku: "REFRESCO-LATA", name: "Refresco lata", unit: "unidad", quantity: 48, minStock: 12, unitCost: 0.45 },
+    { sku: "PATATAS-KG", name: "Patatas", unit: "kg", quantity: 10, minStock: 3, unitCost: 1.2 },
+    { sku: "HUEVOS", name: "Huevos", unit: "unidad", quantity: 60, minStock: 20, unitCost: 0.18 },
+    { sku: "ACEITE-L", name: "Aceite de oliva", unit: "l", quantity: 5, minStock: 1.5, unitCost: 6.5 },
+    { sku: "CAFE-KG", name: "Café molido", unit: "kg", quantity: 4, minStock: 1, unitCost: 9.0 },
+  ];
+  const stockBySku: Record<string, string> = {};
+  for (const s of stockData) {
+    const item = await prisma.stockItem.upsert({
+      where: { establishmentId_sku: { establishmentId: establishment.id, sku: s.sku } },
+      update: { name: s.name, unit: s.unit, minStock: s.minStock },
+      create: { establishmentId: establishment.id, ...s },
+    });
+    stockBySku[s.sku] = item.id;
+  }
+
+  const recipes: Record<string, Array<[string, number]>> = {
+    CERVEZA: [["CERVEZA-L", 0.25]],
+    REFRESCO: [["REFRESCO-LATA", 1]],
+    BRAVAS: [["PATATAS-KG", 0.35], ["HUEVOS", 2], ["ACEITE-L", 0.03]],
+    CAFE: [["CAFE-KG", 0.008]],
+  };
+  for (const [productSku, recipeLines] of Object.entries(recipes)) {
+    const product = await prisma.product.findUnique({
+      where: { establishmentId_sku: { establishmentId: establishment.id, sku: productSku } },
+    });
+    if (!product) continue;
+    const recipe = await prisma.recipe.upsert({
+      where: { productId: product.id },
+      update: {},
+      create: { productId: product.id },
+    });
+    await prisma.recipeLine.deleteMany({ where: { recipeId: recipe.id } });
+    let cost = 0;
+    for (const [stockSku, qty] of recipeLines) {
+      await prisma.recipeLine.create({
+        data: { recipeId: recipe.id, stockItemId: stockBySku[stockSku], quantity: qty },
+      });
+      const item = stockData.find((x) => x.sku === stockSku);
+      cost += qty * (item?.unitCost ?? 0);
+    }
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { costStd: Math.round(cost * 100) / 100 },
+    });
+  }
+
   console.log(
     `Seed OK — establecimiento=${establishment.name}, admin=${admin.email} (admin1234, PIN 1234), camarero@bar.local (camarero1234, PIN 4321)`
   );
