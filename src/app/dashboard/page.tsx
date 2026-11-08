@@ -47,6 +47,11 @@ export default async function DashboardPage() {
         <Link href="/inventario">Inventario</Link>
         <Link href="/carta">Carta</Link>
         <Link href="/compras">Compras</Link>
+        <Link href="/contabilidad">Contabilidad</Link>
+        <Link href="/informes">Informes</Link>
+        <Link href="/banca">Banca</Link>
+        <Link href="/fiscal">Modelos</Link>
+        <Link href="/ocr">OCR</Link>
         <span style={{ marginLeft: "auto", fontSize: 13 }}>{userName}</span>
       </header>
       <main>

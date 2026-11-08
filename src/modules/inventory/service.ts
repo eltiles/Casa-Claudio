@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { round2 } from "@/lib/money";
 import { FiscalError } from "@/lib/errors";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PurchaseInvoice, PurchaseInvoiceLine, Supplier } from "@prisma/client";
 import { nextLedgerEntryNumber } from "@/modules/accounting/ledger";
 
 export interface PurchaseLineInput {
@@ -20,6 +20,11 @@ export interface CreatePurchaseInput {
   lines: PurchaseLineInput[];
   actorId?: string | null;
 }
+
+export type PurchaseWithLines = PurchaseInvoice & {
+  lines: PurchaseInvoiceLine[];
+  supplier: Supplier;
+};
 
 export async function recomputeProductCost(tx: Prisma.TransactionClient, productId: string): Promise<number> {
   const recipe = await tx.recipe.findUnique({
@@ -45,6 +50,92 @@ async function recomputeCostsForStockItem(tx: Prisma.TransactionClient, stockIte
   for (const rl of recipeLines) {
     await recomputeProductCost(tx, rl.recipe.productId);
   }
+}
+
+export async function applyPostedPurchase(
+  tx: Prisma.TransactionClient,
+  invoice: PurchaseWithLines,
+  establishmentId: string,
+  actorId?: string | null,
+  action = "POST_PURCHASE"
+): Promise<void> {
+  for (const l of invoice.lines) {
+    const stockItemId = l.stockItemId;
+    if (!stockItemId) continue;
+    const ref = `PO:${invoice.id}:${stockItemId}`;
+    const already = await tx.stockMovement.findFirst({ where: { reference: ref } });
+    if (!already) {
+      await tx.stockMovement.create({
+        data: {
+          stockItem: { connect: { id: stockItemId } },
+          type: "IN",
+          quantity: Number(l.quantity),
+          reference: ref,
+        },
+      });
+    }
+    await tx.stockItem.update({
+      where: { id: stockItemId },
+      data: { quantity: { increment: Number(l.quantity) }, unitCost: l.unitCost },
+    });
+    await recomputeCostsForStockItem(tx, stockItemId);
+  }
+
+  const totalBase = Number(invoice.totalBase);
+  const totalTax = Number(invoice.totalTax);
+  const total = Number(invoice.total);
+  const entryNumber = await nextLedgerEntryNumber(tx, establishmentId);
+  await tx.ledgerEntry.create({
+    data: {
+      establishmentId,
+      number: entryNumber,
+      date: invoice.issueDate,
+      description: `Compra ${invoice.supplier.name} factura ${invoice.number}`,
+      source: "PURCHASE",
+      sourceId: invoice.id,
+      postedById: actorId ?? null,
+      lines: {
+        create: [
+          {
+            account: { connect: { establishmentId_code: { establishmentId, code: "600" } } },
+            debit: totalBase,
+            credit: 0,
+            description: `Compras factura ${invoice.number}`,
+          },
+          {
+            account: { connect: { establishmentId_code: { establishmentId, code: "472" } } },
+            debit: totalTax,
+            credit: 0,
+            description: `IVA soportado factura ${invoice.number}`,
+          },
+          {
+            account: { connect: { establishmentId_code: { establishmentId, code: "400" } } },
+            debit: 0,
+            credit: total,
+            description: `Proveedor ${invoice.supplier.name}`,
+          },
+        ],
+      },
+    },
+  });
+
+  await tx.outboxEvent.create({
+    data: {
+      aggregateType: "purchaseInvoice",
+      aggregateId: invoice.id,
+      eventType: "purchase.posted",
+      payload: { purchaseInvoiceId: invoice.id, supplierId: invoice.supplierId, total },
+    },
+  });
+  await tx.auditLog.create({
+    data: {
+      actorId: actorId ?? null,
+      action,
+      entityType: "purchaseInvoice",
+      entityId: invoice.id,
+      after: { number: invoice.number, supplier: invoice.supplier.name, total },
+    },
+  });
 }
 
 export async function createPurchaseInvoice(input: CreatePurchaseInput) {
@@ -87,7 +178,7 @@ export async function createPurchaseInvoice(input: CreatePurchaseInput) {
         totalBase,
         totalTax,
         total,
-        status: "POSTED",
+        status: "DRAFT",
         lines: {
           create: lines.map((l) => ({
             stockItem: { connect: { id: l.stockItemId } },
@@ -100,84 +191,15 @@ export async function createPurchaseInvoice(input: CreatePurchaseInput) {
           })),
         },
       },
-      include: { lines: true },
+      include: { lines: true, supplier: true },
     });
 
-    for (const l of invoice.lines) {
-      const stockItemId = l.stockItemId;
-      if (!stockItemId) continue;
-      const ref = `PO:${invoice.id}:${stockItemId}`;
-      const already = await tx.stockMovement.findFirst({ where: { reference: ref } });
-      if (!already) {
-        await tx.stockMovement.create({
-          data: {
-            stockItem: { connect: { id: stockItemId } },
-            type: "IN",
-            quantity: Number(l.quantity),
-            reference: ref,
-          },
-        });
-      }
-      await tx.stockItem.update({
-        where: { id: stockItemId },
-        data: { quantity: { increment: Number(l.quantity) }, unitCost: l.unitCost },
-      });
-      await recomputeCostsForStockItem(tx, stockItemId);
-    }
-
-    const entryNumber = await nextLedgerEntryNumber(tx, input.establishmentId);
-    await tx.ledgerEntry.create({
-      data: {
-        establishmentId: input.establishmentId,
-        number: entryNumber,
-        date: issueDate,
-        description: `Compra ${supplier.name} factura ${input.number}`,
-        source: "PURCHASE",
-        sourceId: invoice.id,
-        postedById: input.actorId ?? null,
-        lines: {
-          create: [
-            {
-              account: { connect: { establishmentId_code: { establishmentId: input.establishmentId, code: "600" } } },
-              debit: totalBase,
-              credit: 0,
-              description: `Compras factura ${input.number}`,
-            },
-            {
-              account: { connect: { establishmentId_code: { establishmentId: input.establishmentId, code: "472" } } },
-              debit: totalTax,
-              credit: 0,
-              description: `IVA soportado factura ${input.number}`,
-            },
-            {
-              account: { connect: { establishmentId_code: { establishmentId: input.establishmentId, code: "400" } } },
-              debit: 0,
-              credit: total,
-              description: `Proveedor ${supplier.name}`,
-            },
-          ],
-        },
-      },
+    await applyPostedPurchase(tx, invoice, input.establishmentId, input.actorId);
+    return tx.purchaseInvoice.update({
+      where: { id: invoice.id },
+      data: { status: "POSTED" },
+      include: { lines: true, supplier: true },
     });
-
-    await tx.outboxEvent.create({
-      data: {
-        aggregateType: "purchaseInvoice",
-        aggregateId: invoice.id,
-        eventType: "purchase.posted",
-        payload: { purchaseInvoiceId: invoice.id, supplierId: supplier.id, total },
-      },
-    });
-    await tx.auditLog.create({
-      data: {
-        actorId: input.actorId ?? null,
-        action: "POST_PURCHASE",
-        entityType: "purchaseInvoice",
-        entityId: invoice.id,
-        after: { number: input.number, supplier: supplier.name, total },
-      },
-    });
-    return invoice;
   });
 }
 

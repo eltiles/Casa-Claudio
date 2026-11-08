@@ -105,6 +105,8 @@ model Establishment {
   suppliers        Supplier[]
   purchaseInvoices PurchaseInvoice[]
   shifts           Shift[]
+  bankAccounts     BankAccount[]
+  supplierPayments SupplierPayment[]
 }
 
 model User {
@@ -483,6 +485,7 @@ model Supplier {
   nif             String?
 
   invoices PurchaseInvoice[]
+  payments SupplierPayment[]
 }
 
 model PurchaseInvoice {
@@ -498,6 +501,7 @@ model PurchaseInvoice {
   total           Decimal  @db.Decimal(12, 2)
   ocrRawText      String?
   ocrConfidence   Decimal? @db.Decimal(5, 4)
+  reviewedById    String?
   status          String   @default("DRAFT")
   createdAt       DateTime @default(now())
 
@@ -529,4 +533,50 @@ model Shift {
   start           DateTime
   end             DateTime?
   breakMinutes    Int      @default(0)
+}
+
+model BankAccount {
+  id              String   @id @default(cuid())
+  establishmentId String
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  name            String
+  bankName        String?
+  iban            String?
+  createdAt       DateTime @default(now())
+
+  movements BankMovement[]
+
+  @@unique([establishmentId, iban])
+}
+
+model BankMovement {
+  id                       String      @id @default(cuid())
+  bankAccountId            String
+  bankAccount              BankAccount @relation(fields: [bankAccountId], references: [id])
+  date                     DateTime
+  amount                   Decimal     @db.Decimal(12, 2)
+  description              String
+  reference                String?
+  fingerprint              String
+  status                   String      @default("UNMATCHED")
+  matchedSaleId            String?
+  matchedSupplierPaymentId String?
+  createdAt                DateTime    @default(now())
+
+  @@unique([bankAccountId, fingerprint])
+}
+
+model SupplierPayment {
+  id                String        @id @default(cuid())
+  establishmentId   String
+  establishment     Establishment @relation(fields: [establishmentId], references: [id])
+  supplierId        String
+  supplier          Supplier      @relation(fields: [supplierId], references: [id])
+  purchaseInvoiceId String?
+  amount            Decimal       @db.Decimal(12, 2)
+  method            PaymentMethod
+  paidAt            DateTime      @db.Date
+  reference         String?
+  createdAt         DateTime      @default(now())
+  createdById       String?
 }

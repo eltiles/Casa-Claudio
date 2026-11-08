@@ -4,7 +4,7 @@ Aplicación de gestión para un bar en España que combina operativa de sala (TP
 contabilidad, con cumplimiento fiscal español. Stack: **Next.js 15 (App Router) +
 TypeScript + PostgreSQL (Prisma) + NextAuth**. Sin tests automatizados (alcance acordado).
 
-## Estado: Fases 0-2 — cimientos fiscales + TPV/mesas/KDS + inventario/escandallos
+## Estado: Fases 0-3 — + contabilidad, modelos, OCR, conciliación bancaria e informes
 
 Fase 0 (núcleo fiscal):
 
@@ -59,9 +59,30 @@ Fase 2 (inventario y escandallos):
 - **Escandallos** (`/carta`, `/carta/[id]`): receta por producto (ingrediente + cantidad), coste estándar
   = Σ cantidad × último coste, margen € y % por producto.
 
-Pendiente por fases: Fase 3 contabilidad completa + OCR de facturas + conciliación bancaria,
-Fase 4 personal/turnos/comisiones, Fase 5 envío Verifactu/SII/TicketBAI a la AEAT + agente de
-impresión ESC/POS local.
+Fase 3 (contabilidad y finanzas):
+
+- **Libro diario** `/contabilidad` + `GET /api/accounting/entries`: asientos con partidas, filtro por
+  fechas y indicador de asiento cuadrado.
+- **Informes en tiempo real** `/informes` + `GET /api/reports/summary`: PyG (ingresos − gastos), IVA
+  repercutido/soportado, cash flow (cobros TPV − pagos a proveedores), cobros por método, ventas por
+  día y descuadres de los cierres de caja.
+- **Modelos fiscales** `/fiscal` + `GET /api/fiscal/model303?year=&quarter=` y `model347?year=`:
+  303 con bases y cuotas por tipo (rectificativas en negativo) y 347 con umbral 3.005,06 €.
+  Borradores para el asesor; 111/130/202 dependen de nómina (Fase 4).
+- **OCR de facturas** `/ocr` + `/api/ocr/parse`, `/api/ocr/drafts`, `/api/ocr/drafts/[id]/approve`:
+  parser de texto de factura (NIF, nº, fecha, base, IVA, total, confianza), bandeja de revisión
+  (DRAFT) obligatoria antes de contabilizar, detección de duplicados por proveedor+nº, y al aprobar
+  se aplican stock + asiento. En Fase 5 se enchufa un proveedor OCR real (Mindee/Textract) para
+  PDF/imagen.
+- **Conciliación bancaria** `/banca` + `/api/bank/*`: cuentas bancarias, importación CSV
+  (fecha;importe;concepto;referencia, idempotente por fingerprint), cruce automático de ingresos con
+  cobros no-efectivo del TPV (±2 días, por importe) y de adeudos con pagos a proveedores
+  (`POST /api/suppliers/payments`, asiento 400 → 570/572, mismo límite de 1.000 € en efectivo).
+  Nota: el parseo de norma 43 nativo queda para Fase 5 con ficheros reales del banco.
+
+Pendiente por fases: Fase 4 personal/turnos/comisiones + modelos 111/130/202,
+Fase 5 envío Verifactu/SII/TicketBAI a la AEAT, proveedor OCR externo, PSD2 (Salt Edge/Tink/
+Yapily) además de CSV, agente de impresión ESC/POS local, hardening.
 
 ## Puesta en marcha
 
@@ -89,6 +110,12 @@ npm run dev                   # o npm run build && npm start (el SW solo actúa 
 | GET | `/api/inventory/movements` | Kardex |
 | POST | `/api/inventory/recipe` | Guarda escandallo de un producto |
 | POST | `/api/internal/drain` | Procesa el outbox (cron, `x-internal-secret`) |
+| GET | `/api/accounting/entries?from=&to=` | Libro diario |
+| GET | `/api/reports/summary?from=&to=` | PyG, IVA, cash flow, por día |
+| GET | `/api/fiscal/model303?year=&quarter=` / `model347?year=` | Borradores de modelos |
+| POST/GET | `/api/ocr/parse`, `/api/ocr/drafts`, `/api/ocr/drafts/[id]/approve` | OCR + revisión |
+| GET/POST | `/api/bank/accounts`, `/api/bank/import`, `/api/bank/movements`, `/api/bank/reconcile` | Conciliación |
+| GET/POST | `/api/suppliers/payments` | Pagos a proveedores |
 
 Ejemplo de venta:
 
