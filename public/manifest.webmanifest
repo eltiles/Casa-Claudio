@@ -1,0 +1,19 @@
+{
+  "name": "Gestión Bar — TPV",
+  "short_name": "TPV Bar",
+  "description": "TPV, mesas y contabilidad fiscal para bar en España",
+  "start_url": "/tpv",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f4f0",
+  "theme_color": "#1d1b16",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

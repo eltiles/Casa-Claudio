@@ -1,7 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
+
+function pinLookup(pin: string): string {
+  return crypto.createHash("sha256").update(pin, "utf8").digest("hex");
+}
 
 async function main() {
   const establishment = await prisma.establishment.upsert({
@@ -20,13 +25,35 @@ async function main() {
   const passwordHash = await bcrypt.hash("admin1234", 10);
   const admin = await prisma.user.upsert({
     where: { email: "admin@bar.local" },
-    update: {},
+    update: {
+      pinHash: await bcrypt.hash("1234", 10),
+      pinLookup: pinLookup("1234"),
+    },
     create: {
       establishmentId: establishment.id,
       email: "admin@bar.local",
       name: "Administrador",
       passwordHash,
+      pinHash: await bcrypt.hash("1234", 10),
+      pinLookup: pinLookup("1234"),
       role: "ADMIN",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "camarero@bar.local" },
+    update: {
+      pinHash: await bcrypt.hash("4321", 10),
+      pinLookup: pinLookup("4321"),
+    },
+    create: {
+      establishmentId: establishment.id,
+      email: "camarero@bar.local",
+      name: "Camarero Ejemplo",
+      passwordHash: await bcrypt.hash("camarero1234", 10),
+      pinHash: await bcrypt.hash("4321", 10),
+      pinLookup: pinLookup("4321"),
+      role: "WAITER",
     },
   });
 
@@ -119,7 +146,9 @@ async function main() {
     });
   }
 
-  console.log(`Seed OK — establecimiento=${establishment.name}, admin=${admin.email} (admin1234)`);
+  console.log(
+    `Seed OK — establecimiento=${establishment.name}, admin=${admin.email} (admin1234, PIN 1234), camarero@bar.local (camarero1234, PIN 4321)`
+  );
 }
 
 main()

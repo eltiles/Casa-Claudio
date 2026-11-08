@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { invoiceHash, type InvoiceHashInput } from "@/lib/hash";
 import { round2 } from "@/lib/money";
 import { FiscalError } from "@/lib/errors";
-import type { Invoice, InvoiceKind, InvoiceLine, Prisma } from "@prisma/client";
+import type { Invoice, InvoiceKind, InvoiceLine, Prisma, PrismaClient } from "@prisma/client";
 
 export interface DocLineInput {
   productId?: string;
@@ -19,6 +19,7 @@ export interface IssueDocumentInput {
   customerNif?: string;
   customerName?: string;
   rectifiesId?: string;
+  saleId?: string;
   lines: DocLineInput[];
   actorId?: string | null;
 }
@@ -47,9 +48,11 @@ export async function ensureSeries(
   });
 }
 
-async function computeLines(lines: DocLineInput[]): Promise<ComputedLine[]> {
+type DbClient = PrismaClient | Prisma.TransactionClient;
+
+async function computeLines(client: DbClient, lines: DocLineInput[]): Promise<ComputedLine[]> {
   const taxRateIds = [...new Set(lines.map((l) => l.taxRateId))];
-  const rates = await prisma.taxRate.findMany({
+  const rates = await client.taxRate.findMany({
     where: { id: { in: taxRateIds }, active: true },
   });
   const byId = new Map(rates.map((r) => [r.id, r]));
@@ -116,118 +119,124 @@ function hashInputFor(
 export async function issueDocument(
   input: IssueDocumentInput
 ): Promise<Invoice & { lines: InvoiceLine[] }> {
+  return prisma.$transaction((tx) => issueDocumentTx(tx, input));
+}
+
+export async function issueDocumentTx(
+  tx: Prisma.TransactionClient,
+  input: IssueDocumentInput
+): Promise<Invoice & { lines: InvoiceLine[] }> {
   const seriesCode = input.seriesCode ?? "A";
   const year = new Date().getFullYear();
-  const computed = await computeLines(input.lines);
+  const computed = await computeLines(tx, input.lines);
   if (computed.length === 0) throw new FiscalError("EMPTY_DOCUMENT", "El documento no tiene líneas");
   if (input.kind === "RECTIFICATIVE" && !input.rectifiesId)
     throw new FiscalError("RECTIFY_REQUIRED", "Una factura rectificativa debe referenciar la factura rectificada");
 
-  return prisma.$transaction(async (tx) => {
-    const series = await tx.invoiceSeries.upsert({
-      where: { establishmentId_code_year: { establishmentId: input.establishmentId, code: seriesCode, year } },
-      update: {},
-      create: { establishmentId: input.establishmentId, code: seriesCode, year, nextNumber: 1 },
-    });
-    const last = await tx.invoice.findFirst({
-      where: { establishmentId: input.establishmentId },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { hash: true },
-    });
-    const previousHash = last?.hash ?? "";
-    const number = series.nextNumber;
-    const allocated = await tx.invoiceSeries.updateMany({
-      where: { id: series.id, nextNumber: number },
-      data: { nextNumber: number + 1 },
-    });
-    if (allocated.count !== 1)
-      throw new FiscalError("SERIES_CONFLICT", "Conflicto de concurrencia al asignar el número de serie");
-
-    const issueDate = new Date();
-    const totalBase = round2(computed.reduce((s, l) => s + l.baseAmount, 0));
-    const totalTax = round2(computed.reduce((s, l) => s + l.taxAmount, 0));
-    const total = round2(totalBase + totalTax);
-    const baseByRate: Record<string, number> = {};
-    for (const l of computed) {
-      const key = l.taxRatePct.toFixed(4);
-      baseByRate[key] = round2((baseByRate[key] ?? 0) + l.baseAmount);
-    }
-    const hash = invoiceHash(
-      hashInputFor(
-        input.establishmentId,
-        seriesCode,
-        number,
-        input.kind,
-        issueDate,
-        input.customerNif ?? "",
-        computed,
-        totalBase,
-        totalTax,
-        total,
-        previousHash
-      )
-    );
-
-    const lineCreates: Prisma.InvoiceLineCreateWithoutInvoiceInput[] = computed.map((l) => ({
-      product: l.productId ? { connect: { id: l.productId } } : undefined,
-      description: l.description,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      taxRate: { connect: { id: l.taxRateId } },
-      taxRatePct: l.taxRatePct,
-      baseAmount: l.baseAmount,
-      taxAmount: l.taxAmount,
-      totalAmount: l.totalAmount,
-    }));
-
-    const invoice = await tx.invoice.create({
-      data: {
-        establishmentId: input.establishmentId,
-        seriesId: series.id,
-        seriesCode,
-        number,
-        kind: input.kind,
-        issueDate,
-        customerNif: input.customerNif ?? null,
-        customerName: input.customerName ?? null,
-        rectifiesId: input.rectifiesId ?? null,
-        baseByRate: baseByRate as Prisma.InputJsonValue,
-        totalBase,
-        totalTax,
-        total,
-        previousHash: previousHash || null,
-        hash,
-        lines: { create: lineCreates },
-      },
-      include: { lines: true },
-    });
-
-    if (input.kind === "RECTIFICATIVE" && input.rectifiesId) {
-      await tx.invoice.update({
-        where: { id: input.rectifiesId },
-        data: { status: "RECTIFIED" },
-      });
-    }
-
-    await tx.outboxEvent.create({
-      data: {
-        aggregateType: "invoice",
-        aggregateId: invoice.id,
-        eventType: "invoice.issued",
-        payload: { invoiceId: invoice.id, seriesCode, number, kind: input.kind, total },
-      },
-    });
-    await tx.auditLog.create({
-      data: {
-        actorId: input.actorId ?? null,
-        action: "ISSUE_DOCUMENT",
-        entityType: "invoice",
-        entityId: invoice.id,
-        after: { seriesCode, number, kind: input.kind, total, hash },
-      },
-    });
-    return invoice;
+  const series = await tx.invoiceSeries.upsert({
+    where: { establishmentId_code_year: { establishmentId: input.establishmentId, code: seriesCode, year } },
+    update: {},
+    create: { establishmentId: input.establishmentId, code: seriesCode, year, nextNumber: 1 },
   });
+  const last = await tx.invoice.findFirst({
+    where: { establishmentId: input.establishmentId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { hash: true },
+  });
+  const previousHash = last?.hash ?? "";
+  const number = series.nextNumber;
+  const allocated = await tx.invoiceSeries.updateMany({
+    where: { id: series.id, nextNumber: number },
+    data: { nextNumber: number + 1 },
+  });
+  if (allocated.count !== 1)
+    throw new FiscalError("SERIES_CONFLICT", "Conflicto de concurrencia al asignar el número de serie");
+
+  const issueDate = new Date();
+  const totalBase = round2(computed.reduce((s, l) => s + l.baseAmount, 0));
+  const totalTax = round2(computed.reduce((s, l) => s + l.taxAmount, 0));
+  const total = round2(totalBase + totalTax);
+  const baseByRate: Record<string, number> = {};
+  for (const l of computed) {
+    const key = l.taxRatePct.toFixed(4);
+    baseByRate[key] = round2((baseByRate[key] ?? 0) + l.baseAmount);
+  }
+  const hash = invoiceHash(
+    hashInputFor(
+      input.establishmentId,
+      seriesCode,
+      number,
+      input.kind,
+      issueDate,
+      input.customerNif ?? "",
+      computed,
+      totalBase,
+      totalTax,
+      total,
+      previousHash
+    )
+  );
+
+  const lineCreates: Prisma.InvoiceLineCreateWithoutInvoiceInput[] = computed.map((l) => ({
+    product: l.productId ? { connect: { id: l.productId } } : undefined,
+    description: l.description,
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    taxRate: { connect: { id: l.taxRateId } },
+    taxRatePct: l.taxRatePct,
+    baseAmount: l.baseAmount,
+    taxAmount: l.taxAmount,
+    totalAmount: l.totalAmount,
+  }));
+
+  const invoice = await tx.invoice.create({
+    data: {
+      establishmentId: input.establishmentId,
+      seriesId: series.id,
+      seriesCode,
+      number,
+      kind: input.kind,
+      issueDate,
+      customerNif: input.customerNif ?? null,
+      customerName: input.customerName ?? null,
+      rectifiesId: input.rectifiesId ?? null,
+      saleId: input.saleId ?? null,
+      baseByRate: baseByRate as Prisma.InputJsonValue,
+      totalBase,
+      totalTax,
+      total,
+      previousHash: previousHash || null,
+      hash,
+      lines: { create: lineCreates },
+    },
+    include: { lines: true },
+  });
+
+  if (input.kind === "RECTIFICATIVE" && input.rectifiesId) {
+    await tx.invoice.update({
+      where: { id: input.rectifiesId },
+      data: { status: "RECTIFIED" },
+    });
+  }
+
+  await tx.outboxEvent.create({
+    data: {
+      aggregateType: "invoice",
+      aggregateId: invoice.id,
+      eventType: "invoice.issued",
+      payload: { invoiceId: invoice.id, seriesCode, number, kind: input.kind, total },
+    },
+  });
+  await tx.auditLog.create({
+    data: {
+      actorId: input.actorId ?? null,
+      action: "ISSUE_DOCUMENT",
+      entityType: "invoice",
+      entityId: invoice.id,
+      after: { seriesCode, number, kind: input.kind, total, hash },
+    },
+  });
+  return invoice;
 }
 
 export interface ChainVerification {

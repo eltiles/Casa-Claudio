@@ -38,7 +38,10 @@ export default async function DashboardPage() {
       <header className="topbar">
         <strong>Gestión Bar</strong>
         <Link href="/dashboard">Panel</Link>
-        <Link href="/ventas/nueva">Nueva venta</Link>
+        <Link href="/tpv">TPV</Link>
+        <Link href="/mesas">Mesas</Link>
+        <Link href="/kds">Cocina</Link>
+        <Link href="/ventas/nueva">Venta rápida</Link>
         <span style={{ marginLeft: "auto", fontSize: 13 }}>{userName}</span>
       </header>
       <main>
