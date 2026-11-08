@@ -114,6 +114,7 @@ export async function sendOrderAction(input: {
 }
 
 export interface TicketDTO {
+  invoiceId: string | null;
   seriesCode: string;
   number: number;
   issueDate: string;
@@ -141,6 +142,7 @@ export async function paySaleAction(input: {
     const inv = r.invoice;
     const ticket: TicketDTO = inv
       ? {
+          invoiceId: inv.id,
           seriesCode: inv.seriesCode,
           number: inv.number,
           issueDate: inv.issueDate.toISOString(),
@@ -156,6 +158,7 @@ export async function paySaleAction(input: {
           })),
         }
       : {
+          invoiceId: null,
           seriesCode: "-",
           number: 0,
           issueDate: new Date().toISOString(),

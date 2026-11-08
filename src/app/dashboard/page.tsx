@@ -55,6 +55,7 @@ export default async function DashboardPage() {
         <Link href="/personal">Personal</Link>
         <Link href="/turnos">Turnos</Link>
         <Link href="/comisiones">Comisiones</Link>
+        <Link href="/auditoria">Auditoría</Link>
         <span style={{ marginLeft: "auto", fontSize: 13 }}>{userName}</span>
       </header>
       <main>

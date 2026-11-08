@@ -342,8 +342,13 @@ export default function TpvClient(props: {
             Hash: {ticket.hash}
           </p>
         </div>
-        <div className="no-print" style={{ display: "flex", gap: 8 }}>
+        <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => window.print()}>Imprimir</button>
+          {ticket.invoiceId && (
+            <a href={`/api/print/ticket?invoiceId=${ticket.invoiceId}`} download>
+              <button type="button">Ticket ESC/POS</button>
+            </a>
+          )}
           <button onClick={nuevaVenta}>Nueva venta</button>
           <Link href="/dashboard"><button>Panel</button></Link>
         </div>

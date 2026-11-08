@@ -20,6 +20,7 @@ export default function LoginPage() {
         ? await signIn("credentials", {
             email: form.get("email"),
             password: form.get("password"),
+            otp: form.get("otp") ?? "",
             redirect: false,
           })
         : await signIn("pin", { pin: form.get("pin"), redirect: false });
@@ -51,6 +52,8 @@ export default function LoginPage() {
               <input id="email" name="email" type="email" required autoComplete="username" />
               <label htmlFor="password">Contraseña</label>
               <input id="password" name="password" type="password" required autoComplete="current-password" />
+              <label htmlFor="otp">Código 2FA (solo si lo tienes activado)</label>
+              <input id="otp" name="otp" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" />
             </>
           ) : (
             <>

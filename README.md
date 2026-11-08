@@ -103,6 +103,7 @@ npm install
 npx prisma migrate deploy     # aplica prisma/migrations (o migrate dev en desarrollo)
 npm run db:seed               # bar de ejemplo + admin@bar.local / admin1234 (PIN 1234)
 npm run dev                   # o npm run build && npm start (el SW solo actúa en producción/HTTPS)
+DATABASE_URL=... ./scripts/backup.sh   # backup en backups/ (retención 7)
 ```
 
 ## API

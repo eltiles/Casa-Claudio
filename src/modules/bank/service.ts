@@ -55,6 +55,35 @@ export function parseBankCsv(text: string): BankRow[] {
   return rows;
 }
 
+export function looksLikeNorma43(text: string): boolean {
+  const first = text.split(/\r?\n/, 1)[0] ?? "";
+  return /^\d{2}/.test(first) && first.length >= 40;
+}
+
+export function parseNorma43(text: string): BankRow[] {
+  const rows: BankRow[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    if (raw.length < 45 || raw.slice(0, 2) !== "22") continue;
+    const fechaOp = raw.slice(20, 26);
+    const m = fechaOp.match(/^(\d{2})(\d{2})(\d{2})$/);
+    if (!m) continue;
+    const date = new Date(`20${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+    let importeRaw = raw.slice(32, 45).trim();
+    let sign = 1;
+    if (importeRaw.startsWith("-")) {
+      sign = -1;
+      importeRaw = importeRaw.slice(1);
+    } else if (importeRaw.startsWith("+")) {
+      importeRaw = importeRaw.slice(1);
+    }
+    const amount = round2((sign * Number(importeRaw)) / 100);
+    const concepto = `${raw.slice(45, 61).trim()} ${raw.slice(61, 80).trim()}`.trim();
+    if (!isFinite(amount) || amount === 0) continue;
+    rows.push({ date, amount, description: concepto || "Movimiento bancario", reference: null });
+  }
+  return rows;
+}
+
 export async function importBankCsv(
   establishmentId: string,
   bankAccountId: string,
@@ -65,7 +94,7 @@ export async function importBankCsv(
     where: { id: bankAccountId, establishmentId },
   });
   if (!account) throw new FiscalError("ACCOUNT_NOT_FOUND", "Cuenta bancaria no encontrada");
-  const rows = parseBankCsv(text);
+  const rows = looksLikeNorma43(text) ? parseNorma43(text) : parseBankCsv(text);
   let imported = 0;
   let skipped = 0;
   for (const r of rows) {

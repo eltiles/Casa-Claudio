@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Role } from "@prisma/client";
 import { createUserAction, updateUserAction } from "@/modules/hr/actions";
+import { disable2FAAction, enable2FAAction } from "@/modules/hr/actions2fa";
 
 interface UserDTO {
   id: string;
@@ -52,6 +53,26 @@ export default function PersonalPanel({
     });
   }
 
+  const [totp, setTotp] = useState<{ secret: string; otpauth: string } | null>(null);
+
+  function activar2FA() {
+    startTransition(async () => {
+      const r = await enable2FAAction();
+      if (!r.ok) return setMsg({ kind: "error", text: r.message });
+      setTotp({ secret: r.secret, otpauth: r.otpauth });
+      setMsg({ kind: "ok", text: "2FA activado: añade la cuenta en tu app autenticadora y verifica el código en el login" });
+    });
+  }
+
+  function desactivar2FA() {
+    startTransition(async () => {
+      const r = await disable2FAAction();
+      if (!r.ok) return setMsg({ kind: "error", text: r.message });
+      setTotp(null);
+      setMsg({ kind: "ok", text: "2FA desactivado" });
+    });
+  }
+
   function actualizar(id: string, patch: { role?: Role; active?: boolean; pin?: string }) {
     setMsg(null);
     startTransition(async () => {
@@ -66,6 +87,20 @@ export default function PersonalPanel({
   return (
     <>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
+      <div className="card" style={{ maxWidth: 560 }}>
+        <h2>Mi 2FA (TOTP)</h2>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="secondary" onClick={activar2FA} disabled={pending}>Activar 2FA</button>
+          <button className="secondary" onClick={desactivar2FA} disabled={pending}>Desactivar 2FA</button>
+        </div>
+        {totp && (
+          <p style={{ fontSize: 13, marginTop: 8 }}>
+            Secreto: <code className="mono">{totp.secret}</code>
+            <br />
+            URL: <code className="mono">{totp.otpauth}</code>
+          </p>
+        )}
+      </div>
       <div className="card" style={{ maxWidth: 560 }}>
         <h2>Nuevo usuario</h2>
         <div className="grid2">

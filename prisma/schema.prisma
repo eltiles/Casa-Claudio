@@ -118,6 +118,7 @@ model User {
   passwordHash    String
   pinHash         String?
   pinLookup       String?       @unique
+  totpSecret      String?
   role            Role          @default(WAITER)
   active          Boolean       @default(true)
   createdAt       DateTime      @default(now())
@@ -199,6 +200,8 @@ model Invoice {
   previousHash    String?
   hash            String         @unique
   verifactuStatus String?
+  verifactuRecord Json?
+  verifactuSentAt DateTime?
   pdfUrl          String?
   saleId          String?        @unique
   sale            Sale?          @relation("InvoiceSale", fields: [saleId], references: [id])

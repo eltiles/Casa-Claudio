@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import FiscalView from "./fiscal-view";
+import EinvoicingPanel from "./einvoicing-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function FiscalPage() {
       <main>
         <h1>Modelos (borradores para el asesor fiscal)</h1>
         <FiscalView />
+        <EinvoicingPanel />
       </main>
     </>
   );

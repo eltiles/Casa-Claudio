@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { round2 } from "@/lib/money";
 import { FiscalError } from "@/lib/errors";
 import { sha256Hex } from "@/lib/hash";
+import { generateTotpSecret } from "@/lib/totp";
 import type { Role } from "@prisma/client";
 
 export async function clockIn(establishmentId: string, userId: string) {
@@ -206,4 +207,25 @@ export async function commissionsReport(
     byWaiter.set(waiterId, cur);
   }
   return [...byWaiter.values()].sort((a, b) => b.commission - a.commission);
+}
+
+export async function enableTotp(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new FiscalError("USER_NOT_FOUND", "Usuario no encontrado");
+  const secret = generateTotpSecret();
+  await prisma.user.update({ where: { id: userId }, data: { totpSecret: secret } });
+  await prisma.auditLog.create({
+    data: { actorId: userId, action: "ENABLE_2FA", entityType: "user", entityId: userId },
+  });
+  return {
+    secret,
+    otpauth: `otpauth://totp/GestionBar:${encodeURIComponent(user.email)}?secret=${secret}&issuer=GestionBar&algorithm=SHA1&digits=6&period=30`,
+  };
+}
+
+export async function disableTotp(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { totpSecret: null } });
+  await prisma.auditLog.create({
+    data: { actorId: userId, action: "DISABLE_2FA", entityType: "user", entityId: userId },
+  });
 }

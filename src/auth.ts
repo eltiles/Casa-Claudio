@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { sha256Hex } from "@/lib/hash";
+import { verifyTotp } from "@/lib/totp";
 
 function sessionPayload(user: {
   id: string;
@@ -30,6 +31,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Contraseña", type: "password" },
+        otp: { label: "Código 2FA (si está activo)", type: "text" },
       },
       async authorize(credentials) {
         const email = String(credentials?.email ?? "").toLowerCase().trim();
@@ -39,6 +41,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user || !user.active) return null;
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
+        if (user.totpSecret) {
+          const otp = String(credentials?.otp ?? "");
+          if (!verifyTotp(user.totpSecret, otp)) return null;
+        }
         return sessionPayload(user);
       },
     }),
