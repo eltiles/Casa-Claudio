@@ -4,7 +4,7 @@ Aplicación de gestión para un bar en España que combina operativa de sala (TP
 contabilidad, con cumplimiento fiscal español. Stack: **Next.js 15 (App Router) +
 TypeScript + PostgreSQL (Prisma) + NextAuth**. Sin tests automatizados (alcance acordado).
 
-## Estado: Fases 0-3 — + contabilidad, modelos, OCR, conciliación bancaria e informes
+## Estado: Fases 0-4 — + personal, turnos, fichajes, comisiones y modelos IRPF/IS
 
 Fase 0 (núcleo fiscal):
 
@@ -80,9 +80,20 @@ Fase 3 (contabilidad y finanzas):
   (`POST /api/suppliers/payments`, asiento 400 → 570/572, mismo límite de 1.000 € en efectivo).
   Nota: el parseo de norma 43 nativo queda para Fase 5 con ficheros reales del banco.
 
-Pendiente por fases: Fase 4 personal/turnos/comisiones + modelos 111/130/202,
-Fase 5 envío Verifactu/SII/TicketBAI a la AEAT, proveedor OCR externo, PSD2 (Salt Edge/Tink/
-Yapily) además de CSV, agente de impresión ESC/POS local, hardening.
+Fase 4 (personal):
+
+- `/personal` + `/api/hr/users`: alta de usuarios (email/contraseña + PIN opcional), cambio de rol,
+  baja/reactivación y reset de PIN; todo auditado (sin registrar secretos). Solo ADMIN/MANAGER.
+- `/turnos` + `/api/hr/shifts`, `/api/hr/clock-out`: fichar entrada/salida (un turno abierto por
+  usuario), listado por día con horas netas (descontando descanso).
+- `/comisiones` + `GET /api/reports/commissions`: comisión por camarero = % de la categoría aplicado
+  sobre la base imponible de sus ventas del período.
+- Modelos `/fiscal` ampliados: 130 (20% sobre beneficio neto del trimestre), 202 (pago a cuenta IS
+  18% sobre cuota al 25%) y 111 (retenciones; placeholder hasta registrar nómina). Borradores para el asesor.
+
+Pendiente: Fase 5 envío Verifactu/SII/TicketBAI a la AEAT, proveedor OCR externo (PDF/imagen),
+PSD2 (Salt Edge/Tink/Yapily) además de CSV, norma 43 nativa, agente de impresión ESC/POS local,
+hardening/backups.
 
 ## Puesta en marcha
 
@@ -112,7 +123,10 @@ npm run dev                   # o npm run build && npm start (el SW solo actúa 
 | POST | `/api/internal/drain` | Procesa el outbox (cron, `x-internal-secret`) |
 | GET | `/api/accounting/entries?from=&to=` | Libro diario |
 | GET | `/api/reports/summary?from=&to=` | PyG, IVA, cash flow, por día |
-| GET | `/api/fiscal/model303?year=&quarter=` / `model347?year=` | Borradores de modelos |
+| GET | `/api/fiscal/model303?year=&quarter=` / `model347?year=` / `model111|130|202` | Borradores de modelos |
+| GET/POST | `/api/hr/shifts`, POST `/api/hr/clock-out` | Fichajes |
+| GET/POST | `/api/hr/users`, PATCH `/api/hr/users/[id]` | Gestión de usuarios |
+| GET | `/api/reports/commissions?from=&to=` | Comisiones por camarero |
 | POST/GET | `/api/ocr/parse`, `/api/ocr/drafts`, `/api/ocr/drafts/[id]/approve` | OCR + revisión |
 | GET/POST | `/api/bank/accounts`, `/api/bank/import`, `/api/bank/movements`, `/api/bank/reconcile` | Conciliación |
 | GET/POST | `/api/suppliers/payments` | Pagos a proveedores |

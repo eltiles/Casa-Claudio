@@ -103,3 +103,72 @@ export async function modelo347(establishmentId: string, year: number) {
     clientes: [...byCustomer.values()].filter((x) => x.total > UMBRAL),
   };
 }
+
+async function benefitInRange(establishmentId: string, from: Date, to: Date): Promise<{ ingresos: number; gastos: number; beneficio: number }> {
+  const entries = await prisma.ledgerEntry.findMany({
+    where: { establishmentId, date: { gte: from, lte: to } },
+    include: { lines: { include: { account: true } } },
+  });
+  let ingresos = 0;
+  let gastos = 0;
+  for (const e of entries) {
+    for (const l of e.lines) {
+      const d = Number(l.debit);
+      const c = Number(l.credit);
+      if (l.account.type === "INCOME") ingresos = round2(ingresos + (c - d));
+      if (l.account.type === "EXPENSE") gastos = round2(gastos + (d - c));
+    }
+  }
+  return { ingresos, gastos, beneficio: round2(ingresos - gastos) };
+}
+
+export async function modelo130(establishmentId: string, year: number, quarter: number) {
+  const { from, to } = quarterRange(year, quarter);
+  const { ingresos, gastos, beneficio } = await benefitInRange(establishmentId, from, to);
+  const tipo = 0.2;
+  return {
+    modelo: "130",
+    year,
+    quarter,
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+    ingresos,
+    gastos,
+    beneficio,
+    tipo,
+    pagoFraccionado: round2(beneficio > 0 ? beneficio * tipo : 0),
+    nota: "Estimación directa IRPF: 20% sobre el beneficio neto del período (art. 40 RIRPF). Borrador para el asesor fiscal.",
+  };
+}
+
+export async function modelo202(establishmentId: string, year: number) {
+  const from = new Date(Date.UTC(year, 0, 1));
+  const to = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+  const { ingresos, gastos, beneficio } = await benefitInRange(establishmentId, from, to);
+  const tipoIS = 0.25;
+  const cuotaIntegra = round2(beneficio > 0 ? beneficio * tipoIS : 0);
+  const porcentajePago = 0.18;
+  return {
+    modelo: "202",
+    year,
+    ingresos,
+    gastos,
+    beneficio,
+    tipoIS,
+    cuotaIntegra,
+    porcentajePago,
+    pagoACuenta: round2(cuotaIntegra * porcentajePago),
+    nota: "Pago a cuenta del Impuesto de Sociedades (18% sobre la cuota). Ajustar al art. 40 LIS / última cuota declarada. Borrador para el asesor fiscal.",
+  };
+}
+
+export async function modelo111(establishmentId: string, year: number, quarter: number) {
+  return {
+    modelo: "111",
+    year,
+    quarter,
+    retenciones: [] as unknown[],
+    totalRetenciones: 0,
+    nota: "Sin nómina registrada todavía: registrar pagos de nómina para calcular las retenciones IRPF (modelo 111 y resumen anual 190).",
+  };
+}

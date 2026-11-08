@@ -102,15 +102,15 @@ async function main() {
   });
 
   const categories: Record<string, string> = {};
-  for (const [key, name] of [
-    ["BEBIDAS", "Bebidas"],
-    ["COMIDA", "Comida"],
-    ["CAFE", "Cafés"],
+  for (const [key, name, commissionPct] of [
+    ["BEBIDAS", "Bebidas", 2],
+    ["COMIDA", "Comida", 5],
+    ["CAFE", "Cafés", 0],
   ] as const) {
     const c = await prisma.category.upsert({
       where: { id: `${establishment.id}-${key}` },
-      update: { name },
-      create: { id: `${establishment.id}-${key}`, establishmentId: establishment.id, name },
+      update: { name, commissionPct },
+      create: { id: `${establishment.id}-${key}`, establishmentId: establishment.id, name, commissionPct },
     });
     categories[key] = c.id;
   }
